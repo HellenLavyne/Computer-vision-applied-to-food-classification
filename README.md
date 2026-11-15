@@ -1,6 +1,6 @@
 # Classificação de Imagens com Extração de Características — Fruits-360
 
-Projeto desenvolvido como avaliação (AV2) da disciplina de **Laboratório de Ciência de Dados**. O objetivo é construir um pipeline completo de visão computacional clássica e aprendizado de máquina tradicional para classificar imagens de frutas, vegetais, nozes, sementes e cogumelos [0.1.3, cite: 1].
+Projeto desenvolvido como avaliação (AV2) da disciplina de **Laboratório de Ciência de Dados**. O objetivo é construir um pipeline completo de visão computacional clássica e aprendizado de máquina tradicional para classificar imagens de frutas, vegetais, nozes, sementes e cogumelos.
 
 > **Restrição Metodológica:** Seguindo as diretrizes do projeto, não são utilizadas redes neurais convolucionais (CNNs), técnicas de aprendizado profundo (*Deep Learning*) ou modelos pré-treinados. Toda a extração de características e classificação é baseada em técnicas clássicas de PDI e algoritmos tradicionais de *Machine Learning*.
 
