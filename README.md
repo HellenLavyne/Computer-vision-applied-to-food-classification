@@ -25,7 +25,7 @@ Projeto desenvolvido como avaliação (AV2) da disciplina de **Laboratório de C
 
 O pipeline foi dividido em etapas sequenciais e modulares para garantir clareza metodológica e reprodutibilidade:
 
-1. **`01_analise_e_preparacao_do_dataset.ipynb`**: Exploração das classes, verificação de integridade/duplicatas, análise de balanceamento e definição da estratégia de divisão sem vazamento de dados (*data leakage*) [0.1.3, cite: 1].
+1. **`01_analise_e_preparacao_do_dataset.ipynb`**: Exploração das classes, verificação de integridade/duplicatas, análise de balanceamento e definição da estratégia de divisão sem vazamento de dados (*data leakage*).
 2. **`02_pre_processamento_das_imagens.ipynb`**: Aplicação e justificativa de operações de melhoria e padronização (como conversão de espaços de cores, filtros de redução de ruído e ajuste de contraste).
 3. **`03_segmentacao.ipynb`**: Avaliação e aplicação de técnicas tradicionais de separação entre objeto e fundo (limiarização, operações morfológicas, contornos ou agrupamento).
 4. **`04_extracao_caracteristicas_e_dataframe.ipynb`**: Transformação das imagens em vetores numéricos combinando descritores de **cor** (histogramas, médias/desvios), **textura** (LBP, matriz de coocorrência), **forma** (momentos de Hu, circularidade, área) e **gradientes/bordas** (HOG).
@@ -39,7 +39,7 @@ O pipeline foi dividido em etapas sequenciais e modulares para garantir clareza 
 
 * **Linguagem:** Python 3.11
 * **Ambiente:** Jupyter Notebook / VS Code
-* **Bibliotecas:** NumPy, Scikit-Learn, Scikit-Image, OpenCV, Matplotlib
+* **Bibliotecas:** NumPy, Scikit-Learn, OpenCV, Matplotlib
 
 ---
 
