@@ -7,6 +7,10 @@ No terminal, baixe o repositório do nosso projeto e a pasta do dataset:
 
 ```bash
 git clone <URL_DO_REPOSITORIO_DA_EQUIPE>
+```
+Após entrar no diretório:
+
+```bash
 git clone <URL_DO_REPOSITORIO_DO_DATASET>
 ```
 
