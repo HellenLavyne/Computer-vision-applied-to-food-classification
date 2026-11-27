@@ -1177,3 +1177,243 @@ img_proc = preprocessar(img, usar_clahe=True)
 img_final = normalizar(img_proc)
 print("Formato:", img_final.shape, "| Tipo:", img_final.dtype,
       f"| Faixa: [{img_final.min():.2f}, {img_final.max():.2f}]")
+
+# ============================================================
+# Etapa 3 - Segmentação
+# ============================================================
+# ============================================================
+# ETAPA 3 - SEGMENTAÇÃO
+# 3.0 - Preparação: bibliotecas e carregamento dos dados
+# ============================================================
+
+from pathlib import Path
+import pandas as pd
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+
+# Mesma seleção de imagens usada nas etapas anteriores (25% por classe)
+df_treino = pd.read_csv("treino_reduzido.csv")
+df_teste = pd.read_csv("teste_reduzido.csv")
+
+def carregar_rgb(caminho):
+    """Lê a imagem com OpenCV e converte de BGR para RGB."""
+    img = cv2.imread(str(caminho))
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+print("Treino:", df_treino.shape, "| Teste:", df_teste.shape)
+
+# ============================================================
+# 3.1 - Limiarização automática (Otsu): dois candidatos
+# Objetivo: comparar duas formas de separar fruta e fundo.
+#   (A) Otsu em tons de cinza: fruta = pixels mais escuros que o fundo
+#   (B) Otsu no canal S do HSV: fruta = pixels com mais saturação (cor)
+# Os testes incluem frutas CLARAS (coco, couve-flor, cebola branca,
+# repolho branco), que são o caso mais difícil para ambos os métodos.
+# Usamos apenas imagens do TREINO.
+# ============================================================
+
+def mascara_otsu_cinza(img_rgb):
+    """Máscara (255 = fruta, 0 = fundo) por Otsu nos tons de cinza.
+    Usamos THRESH_BINARY_INV porque a fruta é MAIS ESCURA que o fundo:
+    pixels abaixo do limiar viram 255 (fruta)."""
+    cinza = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+    limiar, mascara = cv2.threshold(cinza, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    return limiar, mascara
+
+def mascara_otsu_saturacao(img_rgb):
+    """Máscara (255 = fruta, 0 = fundo) por Otsu no canal S do HSV.
+    Aqui a fruta tem MAIS saturação que o fundo branco (S perto de 0),
+    então usamos THRESH_BINARY (sem inverter)."""
+    s = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)[..., 1]
+    limiar, mascara = cv2.threshold(s, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return limiar, mascara
+
+classes_seg = ["Avocado 1", "Ginger 1", "Cocos 1", "Cauliflower 1", "Onion White 2", "Cabbage white 1"]
+
+fig, axes = plt.subplots(3, len(classes_seg), figsize=(17, 9))
+
+for j, classe in enumerate(classes_seg):
+    caminho = df_treino[df_treino["classe"] == classe].sample(1, random_state=2)["caminho"].iloc[0]
+    rgb = carregar_rgb(caminho)
+
+    lim_c, masc_c = mascara_otsu_cinza(rgb)
+    lim_s, masc_s = mascara_otsu_saturacao(rgb)
+
+    # Fração da imagem classificada como fruta (ajuda a notar máscaras absurdas)
+    area_c = (masc_c > 0).mean() * 100
+    area_s = (masc_s > 0).mean() * 100
+
+    axes[0, j].imshow(rgb)
+    axes[0, j].set_title(classe, fontsize=9)
+    axes[1, j].imshow(masc_c, cmap="gray")
+    axes[1, j].set_title(f"Otsu cinza (limiar={lim_c:.0f})\nfruta = {area_c:.0f}% da imagem", fontsize=8)
+    axes[2, j].imshow(masc_s, cmap="gray")
+    axes[2, j].set_title(f"Otsu canal S (limiar={lim_s:.0f})\nfruta = {area_s:.0f}% da imagem", fontsize=8)
+
+for ax in axes.ravel():
+    ax.axis("off")
+
+plt.tight_layout()
+plt.show()
+
+# ============================================================
+# 3.2 - Limpeza da máscara e teste da união dos métodos
+# Pipeline de limpeza:
+#   (1) Fechamento morfológico  -> tapa buracos pequenos
+#   (2) Maior contorno externo, preenchido -> descarta sujeira solta
+#       e tapa buracos grandes (ex.: reflexo da cebola)
+# Versões comparadas: S limpa  x  união (S OR cinza) limpa
+# ============================================================
+
+def limpar_mascara(mascara, tam_kernel=5):
+    """Recebe máscara 0/255 e devolve a máscara limpa (0/255)."""
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (tam_kernel, tam_kernel))
+    fechada = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, kernel)
+
+    # RETR_EXTERNAL: só contornos externos (ignora os buracos internos)
+    contornos, _ = cv2.findContours(fechada, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    limpa = np.zeros_like(mascara)
+    if len(contornos) == 0:
+        return limpa                       # nada encontrado: máscara vazia
+    maior = max(contornos, key=cv2.contourArea)
+    cv2.drawContours(limpa, [maior], -1, 255, thickness=cv2.FILLED)
+    return limpa
+
+def segmentar(img_rgb, metodo="S"):
+    """Segmentação completa. metodo: 'S' (canal S) ou 'uniao' (S OR cinza)."""
+    _, masc_s = mascara_otsu_saturacao(img_rgb)      # definida na célula 2
+    if metodo == "uniao":
+        _, masc_c = mascara_otsu_cinza(img_rgb)      # definida na célula 2
+        masc_s = cv2.bitwise_or(masc_s, masc_c)
+    return limpar_mascara(masc_s)
+
+# ------------------------------------------------------------
+# Parte A - Comparação visual (mesmas classes da célula 2)
+# ------------------------------------------------------------
+fig, axes = plt.subplots(4, len(classes_seg), figsize=(17, 12))
+
+for j, classe in enumerate(classes_seg):
+    caminho = df_treino[df_treino["classe"] == classe].sample(1, random_state=2)["caminho"].iloc[0]
+    rgb = carregar_rgb(caminho)
+
+    _, s_bruta = mascara_otsu_saturacao(rgb)
+    s_limpa = segmentar(rgb, "S")
+    uniao_limpa = segmentar(rgb, "uniao")
+
+    axes[0, j].imshow(rgb);                      axes[0, j].set_title(classe, fontsize=9)
+    axes[1, j].imshow(s_bruta, cmap="gray");     axes[1, j].set_title(f"S bruta ({(s_bruta>0).mean()*100:.0f}%)", fontsize=8)
+    axes[2, j].imshow(s_limpa, cmap="gray");     axes[2, j].set_title(f"S limpa ({(s_limpa>0).mean()*100:.0f}%)", fontsize=8)
+    axes[3, j].imshow(uniao_limpa, cmap="gray"); axes[3, j].set_title(f"União limpa ({(uniao_limpa>0).mean()*100:.0f}%)", fontsize=8)
+
+for ax in axes.ravel():
+    ax.axis("off")
+plt.tight_layout()
+plt.show()
+
+# ------------------------------------------------------------
+# Parte B - Detecção de falhas em 500 imagens do treino
+# Máscaras com área muito pequena (<10%) ou muito grande (>90%)
+# da imagem são suspeitas. Não prova que estão certas ou erradas,
+# só aponta onde olhar.
+# ------------------------------------------------------------
+amostra_seg = df_treino.sample(500, random_state=42).reset_index(drop=True)
+areas = []
+for caminho in amostra_seg["caminho"]:
+    areas.append((segmentar(carregar_rgb(caminho), "S") > 0).mean() * 100)
+amostra_seg["area_fruta_%"] = areas
+
+print(f"Área média da fruta: {np.mean(areas):.1f}% | mínima: {np.min(areas):.1f}% | máxima: {np.max(areas):.1f}%")
+print(f"Suspeitas (<10%): {(np.array(areas) < 10).sum()} | Suspeitas (>90%): {(np.array(areas) > 90).sum()} de {len(areas)}")
+
+# As 6 menores áreas: vamos olhar o que aconteceu
+piores = amostra_seg.nsmallest(6, "area_fruta_%")
+display(piores[["classe", "area_fruta_%"]])
+
+fig, axes = plt.subplots(2, 6, figsize=(16, 6))
+for j, (_, linha) in enumerate(piores.iterrows()):
+    rgb = carregar_rgb(linha["caminho"])
+    axes[0, j].imshow(rgb)
+    axes[0, j].set_title(f"{linha['classe']}\n{linha['area_fruta_%']:.0f}%", fontsize=8)
+    axes[1, j].imshow(segmentar(rgb, "S"), cmap="gray")
+for ax in axes.ravel():
+    ax.axis("off")
+plt.tight_layout()
+plt.show()
+
+# ============================================================
+# 3.3 - Exemplos dos resultados da segmentação
+# Mostra, para 8 classes SORTEADAS do treino (não escolhidas a dedo):
+#   linha 1: imagem original
+#   linha 2: contorno da máscara desenhado sobre a imagem
+#   linha 3: fruta recortada sobre fundo branco (só os pixels da máscara)
+# ============================================================
+
+def recortar_fruta(img_rgb, mascara):
+    """Mantém só os pixels da fruta e pinta o resto de branco."""
+    saida = np.full_like(img_rgb, 255)
+    saida[mascara > 0] = img_rgb[mascara > 0]
+    return saida
+
+def desenhar_contorno(img_rgb, mascara):
+    """Desenha o contorno da máscara (em verde) sobre a imagem."""
+    contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    saida = img_rgb.copy()
+    cv2.drawContours(saida, contornos, -1, (0, 255, 0), 1)
+    return saida
+
+# Sorteia 8 classes diferentes e 1 imagem de cada (random_state fixo = reprodutível)
+classes_sorteadas = df_treino["classe"].drop_duplicates().sample(8, random_state=21).tolist()
+
+fig, axes = plt.subplots(3, 8, figsize=(20, 8))
+
+for j, classe in enumerate(classes_sorteadas):
+    caminho = df_treino[df_treino["classe"] == classe].sample(1, random_state=4)["caminho"].iloc[0]
+    rgb = carregar_rgb(caminho)
+    masc = segmentar(rgb, "S")          # método final: canal S + limpeza
+
+    axes[0, j].imshow(rgb)
+    axes[0, j].set_title(classe, fontsize=9)
+    axes[1, j].imshow(desenhar_contorno(rgb, masc), interpolation="nearest")
+    axes[2, j].imshow(recortar_fruta(rgb, masc), interpolation="nearest")
+
+axes[0, 0].set_ylabel("Original")
+for ax in axes.ravel():
+    ax.axis("off")
+
+plt.tight_layout()
+plt.show()
+
+# ============================================================
+# 3.4 - A união (S OR cinza) corrige as falhas observadas em 3.3?
+# Reusa as MESMAS imagens da grade 3.3 (mesma classe, mesmo random_state)
+# e compara: máscara só do canal S x união com Otsu em cinza.
+# ============================================================
+
+classes_falha = ["Apple 8", "Mushroom champignon 4", "Physalis with Husk 1"]
+
+fig, axes = plt.subplots(3, len(classes_falha), figsize=(11, 11))
+
+for j, classe in enumerate(classes_falha):
+    caminho = df_treino[df_treino["classe"] == classe].sample(1, random_state=4)["caminho"].iloc[0]
+    rgb = carregar_rgb(caminho)
+
+    masc_s = segmentar(rgb, "S")
+    masc_u = segmentar(rgb, "uniao")
+
+    # Pixels que a união acrescentou em relação ao canal S
+    novos = cv2.bitwise_and(masc_u, cv2.bitwise_not(masc_s))
+
+    axes[0, j].imshow(desenhar_contorno(rgb, masc_s), interpolation="nearest")
+    axes[0, j].set_title(f"{classe}\nS limpa ({(masc_s>0).mean()*100:.1f}%)", fontsize=9)
+
+    axes[1, j].imshow(desenhar_contorno(rgb, masc_u), interpolation="nearest")
+    axes[1, j].set_title(f"União limpa ({(masc_u>0).mean()*100:.1f}%)", fontsize=9)
+
+    axes[2, j].imshow(novos, cmap="gray", interpolation="nearest")
+    axes[2, j].set_title(f"Pixels acrescentados pela união\n({(novos>0).sum()} pixels)", fontsize=9)
+
+for ax in axes.ravel():
+    ax.axis("off")
+plt.tight_layout()
+plt.show()
