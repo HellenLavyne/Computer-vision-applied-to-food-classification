@@ -51,6 +51,6 @@ Para instruções detalhadas sobre como clonar os repositórios, criar o ambient
 
 ## 👩‍💻 Equipe
 
-* **Dayanne**
+* **Dayane**
 * **Hellen**
 * **Suiany**
