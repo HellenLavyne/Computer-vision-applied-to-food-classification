@@ -1417,3 +1417,479 @@ for ax in axes.ravel():
     ax.axis("off")
 plt.tight_layout()
 plt.show()
+
+##################################################################
+# Etapa 4 - extração de características e no dataframe
+##################################################################
+
+# ============================================================
+# ETAPA 4 - EXTRAÇÃO DE CARACTERÍSTICAS
+# 4.0 - Preparação: bibliotecas, funções das etapas 2 e 3 e dados
+# ============================================================
+
+import time
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import cv2
+import matplotlib.pyplot as plt
+
+# Funções prontas das Etapas 2 e 3 (arquivo preprocessamento.py)
+from preprocessamento import carregar_rgb, preprocessar, segmentar, recortar_fruta, normalizar
+
+# scikit-image: usado mais adiante para textura (LBP, GLCM) e HOG
+try:
+    import skimage
+    print("scikit-image instalado, versão", skimage.__version__)
+except ImportError:
+    print("ATENÇÃO: instale com  pip install scikit-image")
+
+# --- Carregando a seleção da Etapa 1 (25% de cada classe) ---
+df_treino = pd.read_csv("treino_reduzido.csv")
+df_treino["conjunto"] = "treino"
+df_teste = pd.read_csv("teste_reduzido.csv")
+df_teste["conjunto"] = "teste"
+
+# Juntamos treino e teste numa tabela só. A coluna "conjunto" lembra a origem
+# de cada imagem, para separar de novo na Etapa 5.
+df_imagens = pd.concat([df_treino, df_teste]).reset_index(drop=True)
+
+# --- Identificador único da imagem: conjunto/classe/nome do arquivo ---
+def criar_id(linha):
+    caminho = Path(linha["caminho"])
+    return f"{linha['conjunto']}/{linha['classe']}/{caminho.name}"
+
+df_imagens["id_imagem"] = df_imagens.apply(criar_id, axis=1)
+
+print("Total de imagens:", len(df_imagens))
+print(df_imagens["conjunto"].value_counts().to_dict())
+print("Identificadores únicos?", df_imagens["id_imagem"].is_unique)
+display(df_imagens.head())
+
+# ============================================================
+# 4.1 - Características de COR (medidas só dentro da fruta)
+# Para cada imagem calculamos:
+#   - média e desvio de L, a, b (Lab) e de S, V (HSV)
+#   - H tratado como roda de cores: média do cosseno e do seno
+#   - histograma do H em 12 faixas (fração de pixels em cada faixa de cor)
+# ============================================================
+
+def caracteristicas_cor(img_rgb, mascara):
+    """Devolve um dicionário {nome_da_característica: valor}."""
+    dentro = mascara > 0                          # True onde é fruta
+    lab = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2LAB)
+    hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
+
+    carac = {}
+
+    # Média e desvio de cada canal, só nos pixels da fruta
+    canais = {"L": lab[..., 0], "a": lab[..., 1], "b": lab[..., 2],
+              "S": hsv[..., 1], "V": hsv[..., 2]}
+    for nome, canal in canais.items():
+        valores = canal[dentro].astype(np.float32)
+        carac[f"cor_{nome}_media"] = valores.mean()
+        carac[f"cor_{nome}_desvio"] = valores.std()
+
+    # H como roda de cores: no OpenCV H vai de 0 a 179, então ângulo = H * 2 graus
+    h = hsv[..., 0][dentro].astype(np.float32)
+    angulo = np.deg2rad(h * 2)
+    carac["cor_H_cos"] = np.cos(angulo).mean()
+    carac["cor_H_sen"] = np.sin(angulo).mean()
+
+    # Histograma do H: fração de pixels em cada uma das 12 faixas de cor
+    hist, _ = np.histogram(h, bins=12, range=(0, 180))
+    hist = hist / max(hist.sum(), 1)              # vira fração (soma = 1)
+    for i, valor in enumerate(hist):
+        carac[f"cor_H_hist{i:02d}"] = valor
+
+    return carac
+
+# --- Teste em 4 imagens do treino (uma maçã vermelha, uma amarela, uma verde, um abacate) ---
+exemplos = ["Apple Red 1", "Apple Golden 1", "Apple Granny Smith 1", "Avocado 1"]
+linhas = {}
+
+fig, axes = plt.subplots(2, 4, figsize=(12, 6))
+for j, classe in enumerate(exemplos):
+    caminho = df_treino[df_treino["classe"] == classe].sample(1, random_state=3)["caminho"].iloc[0]
+    img = preprocessar(carregar_rgb(caminho))
+    mascara = segmentar(img, "uniao")
+    linhas[classe] = caracteristicas_cor(img, mascara)
+
+    axes[0, j].imshow(img);                axes[0, j].set_title(classe, fontsize=9)
+    axes[1, j].imshow(mascara, cmap="gray"); axes[1, j].set_title("máscara", fontsize=9)
+for ax in axes.ravel():
+    ax.axis("off")
+plt.tight_layout()
+plt.show()
+
+tabela = pd.DataFrame(linhas).T
+print("Número de características de cor:", tabela.shape[1])
+display(tabela[["cor_L_media", "cor_a_media", "cor_b_media", "cor_S_media", "cor_H_cos", "cor_H_sen"]].round(2))
+
+# ============================================================
+# 4.2 - Características de TEXTURA (medidas só dentro da fruta)
+# LBP: descreve o padrão local da superfície (histograma de 10 padrões)
+# GLCM: mede contraste, homogeneidade, energia, correlação e dissimilaridade
+# Ambos usam a imagem em tons de cinza.
+# ============================================================
+from skimage.feature import local_binary_pattern, graycomatrix, graycoprops
+
+def caracteristicas_textura(img_rgb, mascara):
+    """Devolve um dicionário {nome_da_característica: valor}."""
+    cinza = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+
+    # Encolhemos a máscara 2 pixels para não medir a borda da fruta
+    # (na borda, a mudança fruta -> fundo pareceria "textura").
+    nucleo = cv2.erode(mascara, np.ones((5, 5), np.uint8))
+    dentro = nucleo > 0
+    if dentro.sum() < 50:                 # fruta muito pequena: usa a máscara inteira
+        dentro = mascara > 0
+
+    carac = {}
+
+    # --- LBP: cada pixel é comparado com os 8 vizinhos ---
+    lbp = local_binary_pattern(cinza, P=8, R=1, method="uniform")   # códigos de 0 a 9
+    hist, _ = np.histogram(lbp[dentro], bins=10, range=(0, 10))
+    hist = hist / max(hist.sum(), 1)      # vira fração (soma = 1)
+    for i, valor in enumerate(hist):
+        carac[f"tex_lbp{i}"] = valor
+
+    # --- GLCM: cinza reduzido a 16 tons (1 a 16); o fundo vira 0 e é ignorado ---
+    quant = (cinza // 16).astype(np.uint8) + 1
+    quant[mascara == 0] = 0
+    glcm = graycomatrix(quant, distances=[1],
+                        angles=[0, np.pi/4, np.pi/2, 3*np.pi/4],   # 4 direções
+                        levels=17, symmetric=True, normed=False)
+    glcm = glcm[1:, 1:, :, :].astype(np.float64)                  # descarta o fundo
+    soma = glcm.sum(axis=(0, 1), keepdims=True)
+    glcm = glcm / np.where(soma == 0, 1, soma)                     # vira proporção
+    for prop in ["contrast", "homogeneity", "energy", "correlation", "dissimilarity"]:
+        carac[f"tex_glcm_{prop}"] = graycoprops(glcm, prop).mean() # média das 4 direções
+
+    return carac
+
+# --- Teste: 4 frutas com texturas bem diferentes (lisa x rugosa) ---
+exemplos_tex = ["Apple Granny Smith 1", "Avocado 1", "Ginger 1", "Cauliflower 1"]
+linhas = {}
+
+fig, axes = plt.subplots(1, 4, figsize=(12, 3.5))
+for j, classe in enumerate(exemplos_tex):
+    caminho = df_treino[df_treino["classe"] == classe].sample(1, random_state=3)["caminho"].iloc[0]
+    img = preprocessar(carregar_rgb(caminho))
+    mascara = segmentar(img, "uniao")
+    linhas[classe] = caracteristicas_textura(img, mascara)
+    axes[j].imshow(img); axes[j].set_title(classe, fontsize=9); axes[j].axis("off")
+plt.tight_layout(); plt.show()
+
+tabela_tex = pd.DataFrame(linhas).T
+print("Número de características de textura:", tabela_tex.shape[1])
+display(tabela_tex[[c for c in tabela_tex.columns if "glcm" in c]].round(3))
+
+# ============================================================
+# 4.3 - Características de FORMA (calculadas sobre a máscara da Etapa 3)
+# Área, perímetro, circularidade, proporção, preenchimento, solidez
+# e os 7 momentos de Hu (formato que não muda com rotação ou tamanho).
+# ============================================================
+
+def caracteristicas_forma(mascara):
+    """Devolve um dicionário {nome_da_característica: valor}.
+    A máscara tem 0 (fundo) e 255 (fruta)."""
+    carac = {}
+    contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if len(contornos) == 0:        # máscara vazia: devolve zeros
+        for nome in ["area", "perimetro", "circularidade", "proporcao", "extensao", "solidez"]:
+            carac[f"forma_{nome}"] = 0.0
+        for i in range(7):
+            carac[f"forma_hu{i + 1}"] = 0.0
+        return carac
+
+    cnt = max(contornos, key=cv2.contourArea)       # contorno da fruta
+    area = cv2.contourArea(cnt)
+    perimetro = cv2.arcLength(cnt, True)
+    x, y, largura, altura = cv2.boundingRect(cnt)   # caixa que envolve a fruta
+    area_convexa = cv2.contourArea(cv2.convexHull(cnt))
+
+    carac["forma_area"] = area / mascara.size                 # fração da imagem (0 a 1)
+    carac["forma_perimetro"] = perimetro / mascara.shape[0]   # relativo ao lado da imagem
+    carac["forma_circularidade"] = 4 * np.pi * area / (perimetro ** 2) if perimetro > 0 else 0.0
+    carac["forma_proporcao"] = largura / altura if altura > 0 else 0.0
+    carac["forma_extensao"] = area / (largura * altura) if largura * altura > 0 else 0.0
+    carac["forma_solidez"] = area / area_convexa if area_convexa > 0 else 0.0
+
+    # Momentos de Hu: usamos o logaritmo (mantendo o sinal) porque os valores originais
+    # são muito pequenos (da ordem de 0,0001) e ficariam "invisíveis" para o classificador.
+    hu = cv2.HuMoments(cv2.moments(cnt)).flatten()
+    for i, valor in enumerate(hu):
+        carac[f"forma_hu{i + 1}"] = -np.sign(valor) * np.log10(abs(valor) + 1e-30)
+
+    return carac
+
+# --- Teste: formas bem diferentes (redonda, oval, alongada, irregular) ---
+exemplos_forma = ["Cocos 1", "Avocado 1", "Eggplant long 1", "Pineapple Mini 1"]
+linhas = {}
+
+fig, axes = plt.subplots(2, 4, figsize=(12, 6))
+for j, classe in enumerate(exemplos_forma):
+    caminho = df_treino[df_treino["classe"] == classe].sample(1, random_state=3)["caminho"].iloc[0]
+    img = preprocessar(carregar_rgb(caminho))
+    mascara = segmentar(img, "uniao")
+    linhas[classe] = caracteristicas_forma(mascara)
+    axes[0, j].imshow(img);                  axes[0, j].set_title(classe, fontsize=9)
+    axes[1, j].imshow(mascara, cmap="gray"); axes[1, j].set_title("máscara", fontsize=9)
+for ax in axes.ravel():
+    ax.axis("off")
+plt.tight_layout(); plt.show()
+
+tabela_forma = pd.DataFrame(linhas).T
+print("Número de características de forma:", tabela_forma.shape[1])
+display(tabela_forma[["forma_area", "forma_circularidade", "forma_proporcao",
+                      "forma_extensao", "forma_solidez"]].round(3))
+
+# ============================================================
+# 4.4 - Extração completa de UMA imagem e teste de tempo
+# Junta cor + textura + forma. Antes de rodar nas 50.056 imagens,
+# medimos o tempo em 200 imagens para estimar a duração total.
+# ============================================================
+
+def extrair_caracteristicas(caminho):
+    """Lê uma imagem e devolve um dicionário com todas as características."""
+    img = preprocessar(carregar_rgb(caminho))
+    mascara = segmentar(img, "uniao")
+
+    # Segurança: se a segmentação não achou fruta nenhuma, usamos a imagem inteira
+    # e deixamos uma marca (coluna de controle, que NÃO é característica).
+    vazia = int((mascara > 0).sum() == 0)
+    if vazia:
+        mascara = np.full_like(mascara, 255)
+
+    carac = {}
+    carac.update(caracteristicas_cor(img, mascara))
+    carac.update(caracteristicas_textura(img, mascara))
+    carac.update(caracteristicas_forma(mascara))
+    carac["controle_mascara_vazia"] = vazia
+    return carac
+
+# --- Teste de tempo em 200 imagens ---
+amostra_tempo = df_imagens.sample(200, random_state=0)
+
+inicio = time.perf_counter()
+resultados = [extrair_caracteristicas(c) for c in amostra_tempo["caminho"]]
+duracao = time.perf_counter() - inicio
+
+df_teste_tempo = pd.DataFrame(resultados)
+colunas_carac = [c for c in df_teste_tempo.columns if not c.startswith("controle_")]
+
+print(f"Tempo por imagem: {duracao / 200 * 1000:.1f} ms")
+print(f"Estimativa para {len(df_imagens)} imagens: {duracao / 200 * len(df_imagens) / 60:.1f} minutos")
+print("Número de características:", len(colunas_carac))
+print("Valores ausentes (NaN):", int(df_teste_tempo[colunas_carac].isna().sum().sum()))
+print("Valores infinitos:", int(np.isinf(df_teste_tempo[colunas_carac]).sum().sum()))
+print("Máscaras vazias:", int(df_teste_tempo["controle_mascara_vazia"].sum()))
+
+# ============================================================
+# 4.5 - Extração completa (50.056 imagens) e construção do dataframe
+# Processa em blocos de 5.000 imagens e salva cada bloco num arquivo.
+# Se o VS Code travar ou o kernel reiniciar, basta rodar a célula de novo:
+# os blocos já prontos são pulados e o trabalho continua de onde parou.
+# ============================================================
+
+TAM_BLOCO = 5000
+pasta_blocos = Path("caracteristicas_parciais")
+pasta_blocos.mkdir(exist_ok=True)
+
+falhas = []                                   # imagens que não puderam ser processadas
+n_blocos = int(np.ceil(len(df_imagens) / TAM_BLOCO))
+inicio_total = time.perf_counter()
+
+for b in range(n_blocos):
+    arquivo = pasta_blocos / f"bloco_{b:03d}.csv"
+    if arquivo.exists():
+        print(f"Bloco {b + 1}/{n_blocos}: já existe, pulando")
+        continue
+
+    bloco = df_imagens.iloc[b * TAM_BLOCO:(b + 1) * TAM_BLOCO]
+    registros = []
+    for id_img, classe, conjunto, caminho in zip(bloco["id_imagem"], bloco["classe"],
+                                                 bloco["conjunto"], bloco["caminho"]):
+        try:
+            registro = {"id_imagem": id_img, "classe": classe, "conjunto": conjunto}
+            registro.update(extrair_caracteristicas(caminho))
+            registros.append(registro)
+        except Exception as erro:             # uma imagem ruim não derruba o processo
+            falhas.append((id_img, str(erro)))
+
+    pd.DataFrame(registros).to_csv(arquivo, index=False)
+    minutos = (time.perf_counter() - inicio_total) / 60
+    print(f"Bloco {b + 1}/{n_blocos}: {len(registros)} imagens ok | {minutos:.1f} min desde o início")
+
+# --- Junta todos os blocos na tabela final ---
+df_carac = pd.concat([pd.read_csv(a) for a in sorted(pasta_blocos.glob("bloco_*.csv"))],
+                     ignore_index=True)
+df_carac.to_csv("caracteristicas.csv", index=False)
+
+print("\nTabela final:", df_carac.shape)
+print("Imagens com falha:", len(falhas))
+display(df_carac.head())
+
+# ============================================================
+# 4.6 - Verificação da tabela final
+# ============================================================
+
+colunas_carac = [c for c in df_carac.columns
+                 if c.startswith(("cor_", "tex_", "forma_"))]
+
+print("Linhas:", len(df_carac), "| Colunas de características:", len(colunas_carac))
+print("Identificadores únicos?", df_carac["id_imagem"].is_unique)
+print("Classes:", df_carac["classe"].nunique())
+print("Conjuntos:", df_carac["conjunto"].value_counts().to_dict())
+print("Valores ausentes (NaN):", int(df_carac[colunas_carac].isna().sum().sum()))
+print("Valores infinitos:", int(np.isinf(df_carac[colunas_carac]).sum().sum()))
+print("Máscaras vazias:", int(df_carac["controle_mascara_vazia"].sum()))
+
+# --- As três configurações a comparar na Etapa 5 ---
+cols_cor = [c for c in colunas_carac if c.startswith("cor_")]
+cols_tex = [c for c in colunas_carac if c.startswith("tex_")]
+cols_forma = [c for c in colunas_carac if c.startswith("forma_")]
+configuracoes = {
+    "A: so cor": cols_cor,
+    "B: cor + textura": cols_cor + cols_tex,
+    "C: cor + textura + forma": cols_cor + cols_tex + cols_forma,
+}
+for nome, colunas in configuracoes.items():
+    print(f"{nome}: {len(colunas)} características")
+
+# --- Estatísticas de algumas características (conferir se são razoáveis) ---
+display(df_carac[["cor_L_media", "cor_S_media", "tex_glcm_contrast",
+                  "forma_area", "forma_circularidade"]].describe().round(3))
+
+# ============================================================
+# 4.7 - Correção de classes escritas de formas diferentes
+# O dataset tem uma classe cujo nome muda só nas maiúsculas/minúsculas entre
+# as pastas Training e Test (identificado na Etapa 1). Aqui unificamos o nome,
+# usando a grafia do conjunto de treino como padrão.
+# ============================================================
+
+# Passo 1: encontrar classes com mais de uma grafia
+grupos = df_carac.groupby(df_carac["classe"].str.casefold())["classe"].unique()
+duplicadas = grupos[grupos.apply(len) > 1]
+print("Classes com mais de uma grafia:", len(duplicadas))
+for chave, grafias in duplicadas.items():
+    print("\n", list(grafias))
+    print(df_carac[df_carac["classe"].isin(grafias)].groupby(["classe", "conjunto"]).size())
+
+# Passo 2: unificar usando a grafia do treino
+mapa = {}
+for chave, grafias in duplicadas.items():
+    grafias_treino = df_carac.loc[(df_carac["conjunto"] == "treino")
+                                  & df_carac["classe"].isin(grafias), "classe"].unique()
+    padrao = grafias_treino[0] if len(grafias_treino) > 0 else grafias[0]
+    for g in grafias:
+        mapa[g] = padrao
+print("\nCorreção aplicada:", mapa)
+df_carac["classe"] = df_carac["classe"].replace(mapa)
+
+# Passo 3: conferir
+print("\nClasses depois da correção:", df_carac["classe"].nunique())
+classes_treino_c = set(df_carac.loc[df_carac["conjunto"] == "treino", "classe"])
+classes_teste_c = set(df_carac.loc[df_carac["conjunto"] == "teste", "classe"])
+print("Mesmas classes no treino e no teste?", classes_treino_c == classes_teste_c)
+
+# Passo 4: salvar de novo a tabela corrigida
+df_carac.to_csv("caracteristicas.csv", index=False)
+
+# ============================================================
+# 4.8 - HOG compacto (Histograma de Gradientes Orientados)
+# O HOG divide a imagem em quadrados de 25x25 pixels e, em cada um, conta para
+# que direção apontam as bordas (9 direções). Os quadrados são agrupados em
+# blocos de 2x2 e normalizados. Resultado: 324 números por imagem.
+# Calculado em tons de cinza, sobre a fruta recortada (fundo branco).
+# ============================================================
+from skimage.feature import hog
+from skimage import exposure
+
+def caracteristicas_hog(img_rgb, mascara):
+    """Devolve um vetor com 324 números (float32)."""
+    fruta = recortar_fruta(img_rgb, mascara)          # fundo branco constante
+    cinza = cv2.cvtColor(fruta, cv2.COLOR_RGB2GRAY)
+    return hog(cinza, orientations=9, pixels_per_cell=(25, 25), cells_per_block=(2, 2),
+               block_norm="L2-Hys", feature_vector=True).astype(np.float32)
+
+def extrair_hog(caminho):
+    """Lê uma imagem, segmenta e devolve o HOG dela."""
+    img = preprocessar(carregar_rgb(caminho))
+    mascara = segmentar(img, "uniao")
+    if (mascara > 0).sum() == 0:                      # segurança: máscara vazia
+        mascara = np.full_like(mascara, 255)
+    return caracteristicas_hog(img, mascara)
+
+# --- Visualização: como o HOG "enxerga" 4 frutas ---
+exemplos_hog = ["Apple Granny Smith 1", "Pineapple Mini 1", "Eggplant long 1", "Cocos 1"]
+fig, axes = plt.subplots(2, 4, figsize=(12, 6))
+for j, classe in enumerate(exemplos_hog):
+    caminho = df_treino[df_treino["classe"] == classe].sample(1, random_state=3)["caminho"].iloc[0]
+    img = preprocessar(carregar_rgb(caminho))
+    mascara = segmentar(img, "uniao")
+    cinza = cv2.cvtColor(recortar_fruta(img, mascara), cv2.COLOR_RGB2GRAY)
+    _, imagem_hog = hog(cinza, orientations=9, pixels_per_cell=(25, 25), cells_per_block=(2, 2),
+                        block_norm="L2-Hys", visualize=True)
+    axes[0, j].imshow(img); axes[0, j].set_title(classe, fontsize=9)
+    axes[1, j].imshow(exposure.rescale_intensity(imagem_hog, in_range=(0, 10)), cmap="gray")
+    axes[1, j].set_title("HOG", fontsize=9)
+for ax in axes.ravel():
+    ax.axis("off")
+plt.tight_layout(); plt.show()
+
+# --- Teste de tempo em 200 imagens ---
+amostra_hog = df_imagens.sample(200, random_state=0)
+inicio = time.perf_counter()
+teste_hog = np.vstack([extrair_hog(c) for c in amostra_hog["caminho"]])
+duracao = time.perf_counter() - inicio
+print(f"Formato: {teste_hog.shape} | tipo: {teste_hog.dtype}")
+print(f"Tempo por imagem: {duracao / 200 * 1000:.1f} ms")
+print(f"Estimativa para {len(df_imagens)} imagens: {duracao / 200 * len(df_imagens) / 60:.1f} minutos")
+print("NaN:", int(np.isnan(teste_hog).sum()), "| infinitos:", int(np.isinf(teste_hog).sum()))
+
+# ============================================================
+# 4.9 - Extração completa do HOG (50.056 imagens), em blocos de 5.000
+# Cada bloco é salvo; se travar, rode a célula de novo e ela continua.
+# Resultado final: hog.npz, com os identificadores (ids) e a matriz HOG (X).
+# ============================================================
+
+TAM_BLOCO = 5000
+pasta_hog = Path("hog_parciais")
+pasta_hog.mkdir(exist_ok=True)
+
+falhas_hog = []
+n_blocos = int(np.ceil(len(df_imagens) / TAM_BLOCO))
+inicio_total = time.perf_counter()
+
+for b in range(n_blocos):
+    arquivo = pasta_hog / f"bloco_{b:03d}.npz"
+    if arquivo.exists():
+        print(f"Bloco {b + 1}/{n_blocos}: já existe, pulando")
+        continue
+    bloco = df_imagens.iloc[b * TAM_BLOCO:(b + 1) * TAM_BLOCO]
+    ids, linhas = [], []
+    for id_img, caminho in zip(bloco["id_imagem"], bloco["caminho"]):
+        try:
+            linhas.append(extrair_hog(caminho))
+            ids.append(id_img)
+        except Exception as erro:
+            falhas_hog.append((id_img, str(erro)))
+    np.savez(arquivo, ids=np.array(ids), X=np.vstack(linhas))
+    minutos = (time.perf_counter() - inicio_total) / 60
+    print(f"Bloco {b + 1}/{n_blocos}: {len(ids)} imagens ok | {minutos:.1f} min desde o início")
+
+# --- Junta os blocos e salva ---
+ids_todos, X_todos = [], []
+for a in sorted(pasta_hog.glob("bloco_*.npz")):
+    d = np.load(a)
+    ids_todos.append(d["ids"]); X_todos.append(d["X"])
+ids_todos = np.concatenate(ids_todos)
+X_todos = np.vstack(X_todos)
+np.savez("hog.npz", ids=ids_todos, X=X_todos)
+
+print("\nHOG:", X_todos.shape, "| falhas:", len(falhas_hog))
+print("Mesmos identificadores da tabela principal?", set(ids_todos) == set(df_carac["id_imagem"]))
+print("NaN:", int(np.isnan(X_todos).sum()), "| infinitos:", int(np.isinf(X_todos).sum()))
