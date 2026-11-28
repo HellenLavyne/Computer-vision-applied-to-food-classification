@@ -1,30 +1,3 @@
-
-{
- "cells": [],
- "metadata": {
-  "kernelspec": {
-   "display_name": "venv (3.11.9)",
-   "language": "python",
-   "name": "python3"
-  },
-  "language_info": {
-   "codemirror_mode": {
-    "name": "ipython",
-    "version": 3
-   },
-   "file_extension": ".py",
-   "mimetype": "text/x-python",
-   "name": "python",
-   "nbconvert_exporter": "python",
-   "pygments_lexer": "ipython3",
-   "version": "3.11.9"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 5
-}
-
-
 ####################################################################################################
 #------------------------------ETAPA 01 - Análise e Preparação do dataset -------------------------#
 ####################################################################################################
@@ -36,6 +9,9 @@ import cv2
 import hashlib
 import random
 import matplotlib.pyplot as plt
+import numpy as np
+import time
+
 
 
 print("="*50)
@@ -866,18 +842,16 @@ df_teste_reduzido.to_csv(
 ####################################################################
 # Etapa 2 - Pré - processamento das imagens 
 ####################################################################
-from pathlib import Path
-import pandas as pd
-import numpy as np
-import cv2
-import random
-import matplotlib.pyplot as plt
+
+print("="*50)
+print("ETAPA 02 - Pré-processamento das imagens")
+print("="*50)
 
 df_treino = pd.read_csv("treino_reduzido.csv")
 df_teste = pd.read_csv("teste_reduzido.csv")
 
 print("Treino:", df_treino.shape, "| Teste:", df_teste.shape)
-display(df_treino.head())
+print(df_treino.head())
 
 # Teste de sanidade: o caminho salvo no CSV existe na sua máquina?
 primeiro = Path(df_treino.loc[0, "caminho"])
@@ -1186,11 +1160,10 @@ print("Formato:", img_final.shape, "| Tipo:", img_final.dtype,
 # 3.0 - Preparação: bibliotecas e carregamento dos dados
 # ============================================================
 
-from pathlib import Path
-import pandas as pd
-import numpy as np
-import cv2
-import matplotlib.pyplot as plt
+
+print("="*50)
+print("ETAPA 03 - SEGMENTAÇÃO")
+print("="*50)
 
 # Mesma seleção de imagens usada nas etapas anteriores (25% por classe)
 df_treino = pd.read_csv("treino_reduzido.csv")
@@ -1328,7 +1301,7 @@ print(f"Suspeitas (<10%): {(np.array(areas) < 10).sum()} | Suspeitas (>90%): {(n
 
 # As 6 menores áreas: vamos olhar o que aconteceu
 piores = amostra_seg.nsmallest(6, "area_fruta_%")
-display(piores[["classe", "area_fruta_%"]])
+print(piores[["classe", "area_fruta_%"]])
 
 fig, axes = plt.subplots(2, 6, figsize=(16, 6))
 for j, (_, linha) in enumerate(piores.iterrows()):
@@ -1427,12 +1400,10 @@ plt.show()
 # 4.0 - Preparação: bibliotecas, funções das etapas 2 e 3 e dados
 # ============================================================
 
-import time
-from pathlib import Path
-import numpy as np
-import pandas as pd
-import cv2
-import matplotlib.pyplot as plt
+print("="*50)
+print("ETAPA 04 - EXTRAÇÃO DE CARACTERÍSTICAS")
+print("="*50)
+
 
 # Funções prontas das Etapas 2 e 3 (arquivo preprocessamento.py)
 from preprocessamento import carregar_rgb, preprocessar, segmentar, recortar_fruta, normalizar
@@ -1464,7 +1435,7 @@ df_imagens["id_imagem"] = df_imagens.apply(criar_id, axis=1)
 print("Total de imagens:", len(df_imagens))
 print(df_imagens["conjunto"].value_counts().to_dict())
 print("Identificadores únicos?", df_imagens["id_imagem"].is_unique)
-display(df_imagens.head())
+print(df_imagens.head())
 
 # ============================================================
 # 4.1 - Características de COR (medidas só dentro da fruta)
@@ -1524,7 +1495,7 @@ plt.show()
 
 tabela = pd.DataFrame(linhas).T
 print("Número de características de cor:", tabela.shape[1])
-display(tabela[["cor_L_media", "cor_a_media", "cor_b_media", "cor_S_media", "cor_H_cos", "cor_H_sen"]].round(2))
+print(tabela[["cor_L_media", "cor_a_media", "cor_b_media", "cor_S_media", "cor_H_cos", "cor_H_sen"]].round(2))
 
 # ============================================================
 # 4.2 - Características de TEXTURA (medidas só dentro da fruta)
@@ -1583,7 +1554,7 @@ plt.tight_layout(); plt.show()
 
 tabela_tex = pd.DataFrame(linhas).T
 print("Número de características de textura:", tabela_tex.shape[1])
-display(tabela_tex[[c for c in tabela_tex.columns if "glcm" in c]].round(3))
+print(tabela_tex[[c for c in tabela_tex.columns if "glcm" in c]].round(3))
 
 # ============================================================
 # 4.3 - Características de FORMA (calculadas sobre a máscara da Etapa 3)
@@ -1643,7 +1614,7 @@ plt.tight_layout(); plt.show()
 
 tabela_forma = pd.DataFrame(linhas).T
 print("Número de características de forma:", tabela_forma.shape[1])
-display(tabela_forma[["forma_area", "forma_circularidade", "forma_proporcao",
+print(tabela_forma[["forma_area", "forma_circularidade", "forma_proporcao",
                       "forma_extensao", "forma_solidez"]].round(3))
 
 # ============================================================
@@ -1730,7 +1701,7 @@ df_carac.to_csv("caracteristicas.csv", index=False)
 
 print("\nTabela final:", df_carac.shape)
 print("Imagens com falha:", len(falhas))
-display(df_carac.head())
+print(df_carac.head())
 
 # ============================================================
 # 4.6 - Verificação da tabela final
@@ -1760,7 +1731,7 @@ for nome, colunas in configuracoes.items():
     print(f"{nome}: {len(colunas)} características")
 
 # --- Estatísticas de algumas características (conferir se são razoáveis) ---
-display(df_carac[["cor_L_media", "cor_S_media", "tex_glcm_contrast",
+print(df_carac[["cor_L_media", "cor_S_media", "tex_glcm_contrast",
                   "forma_area", "forma_circularidade"]].describe().round(3))
 
 # ============================================================
@@ -1893,3 +1864,1152 @@ np.savez("hog.npz", ids=ids_todos, X=X_todos)
 print("\nHOG:", X_todos.shape, "| falhas:", len(falhas_hog))
 print("Mesmos identificadores da tabela principal?", set(ids_todos) == set(df_carac["id_imagem"]))
 print("NaN:", int(np.isnan(X_todos).sum()), "| infinitos:", int(np.isinf(X_todos).sum()))
+
+
+
+# ============================================================
+# ETAPA 5 - CLASSIFICAÇÃO E AVALIAÇÃO DOS MODELOS
+# ============================================================
+
+print("="*50)
+print("ETAPA 05 - CLASSIFICAÇÃO E AVALIAÇÃO DOS MODELOS")
+print("="*50)
+
+
+# Preparação e carregamento dos dados
+import seaborn as sns
+import time
+from sklearn.dummy import DummyClassifier
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score, classification_report)
+
+from sklearn.model_selection import StratifiedKFold, cross_validate, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import confusion_matrix
+
+# ------------------------------------------------------------
+# 1 -  CARREGAMENTO DO DATAFRAME DE CARACTERÍSTICAS
+# ------------------------------------------------------------
+
+df = pd.read_csv("caracteristicas.csv")
+
+print("Dimensão do dataframe:", df.shape)
+print(df.head())
+
+# ------------------------------------------------------------
+# 2 - CARREGAMENTO DAS CARACTERÍSTICAS HOG
+# ------------------------------------------------------------
+
+# Carregar arquivo HOG
+dados_hog = np.load("hog.npz")
+
+# Recuperar matriz e identificadores
+matriz_hog = dados_hog["X"]
+ids_hog = dados_hog["ids"]
+
+print("Dimensão da matriz HOG:", matriz_hog.shape)
+print("Quantidade de identificadores:", len(ids_hog))
+
+# ------------------------------------------------------------
+# 3 - CONFERÊNCIA DOS IDENTIFICADORES
+# ------------------------------------------------------------
+
+print("\nIdentificadores únicos no dataframe:",
+      df["id_imagem"].is_unique)
+
+print("Identificadores únicos no HOG:",
+      len(np.unique(ids_hog)) == len(ids_hog))
+
+print("Mesmos identificadores nos dois arquivos:",
+      set(df["id_imagem"]) == set(ids_hog))
+
+# ------------------------------------------------------------
+# 4 - VERIFICAÇÃO DA INTEGRIDADE DOS DADOS
+# ------------------------------------------------------------
+
+print("\nValores ausentes:", df.isna().sum().sum())
+
+print("Valores infinitos:",
+      np.isinf(df.select_dtypes(include=np.number)).sum().sum())
+
+print("\nDistribuição dos conjuntos:")
+print(df["conjunto"].value_counts())
+
+print("\nQuantidade de classes:",
+      df["classe"].nunique())
+
+# ==========================================
+# RECONSTRUÇÃO DO DATAFRAME COMPLETO
+# ==========================================
+
+# Criar DataFrame das características HOG
+df_hog = pd.DataFrame(
+    matriz_hog,
+    columns=[f"hog_{i}" for i in range(matriz_hog.shape[1])]
+)
+
+# Adicionar identificadores
+df_hog.insert(0, "id_imagem", ids_hog)
+
+# Integrar com as características tradicionais
+df_completo = df.merge(
+    df_hog,
+    on="id_imagem",
+    how="inner"
+)
+
+print("DataFrame completo:", df_completo.shape)
+
+
+# ==========================================
+# CONSTRUÇÃO DAS CONFIGURAÇÕES
+# ==========================================
+
+# Identificação das características por grupo
+colunas_cor = [
+    c for c in df.columns if c.startswith("cor_")
+]
+
+colunas_textura = [
+    c for c in df.columns if c.startswith("tex_")
+]
+
+colunas_forma = [
+    c for c in df.columns if c.startswith("forma_")
+]
+
+colunas_hog = [
+    c for c in df_completo.columns if c.startswith("hog_")
+]
+
+# Construção das quatro configurações
+configuracoes = {
+    "A - Cor": colunas_cor,
+
+    "B - Cor + Textura":
+        colunas_cor + colunas_textura,
+
+    "C - Cor + Textura + Forma":
+        colunas_cor + colunas_textura + colunas_forma,
+
+    "D - Cor + Textura + Forma + HOG":
+        colunas_cor + colunas_textura + colunas_forma + colunas_hog
+}
+
+# Conferência das quantidades
+print("Quantidade de características por grupo:")
+print("Cor:", len(colunas_cor))
+print("Textura:", len(colunas_textura))
+print("Forma:", len(colunas_forma))
+print("HOG:", len(colunas_hog))
+
+print("\nConfigurações:")
+for nome, colunas in configuracoes.items():
+    print(f"{nome}: {len(colunas)} características")
+
+# =================================================
+#  Separação dos dados e construção do baseline
+#  SEPARAÇÃO DOS DADOS
+# ================================================
+
+# Identificação dos conjuntos
+dados_treino = df_completo[
+    df_completo["conjunto"] == "treino"
+].copy()
+
+dados_teste = df_completo[
+    df_completo["conjunto"] == "teste"
+].copy()
+
+# Variável alvo
+y_treino = dados_treino["classe"]
+y_teste = dados_teste["classe"]
+
+# Matrizes de características para cada configuração
+X_treino = {}
+X_teste = {}
+
+for nome, colunas in configuracoes.items():
+
+    X_treino[nome] = dados_treino[colunas]
+    X_teste[nome] = dados_teste[colunas]
+
+# Conferência
+print("Quantidade de imagens:")
+print("Treino:", len(dados_treino))
+print("Teste:", len(dados_teste))
+
+print("\nQuantidade de classes:")
+print("Treino:", y_treino.nunique())
+print("Teste:", y_teste.nunique())
+
+print("\nDimensões das configurações:")
+
+for nome in configuracoes:
+    print(
+        f"{nome}: "
+        f"Treino {X_treino[nome].shape} | "
+        f"Teste {X_teste[nome].shape}"
+    )
+
+# Foi necessário a instalação da biblioteca scikit-learn (sklearn)
+# %pip install scikit-learn
+
+
+# ==========================================
+# CONSTRUÇÃO MODELO BASELINE
+# ==========================================
+
+# Criar e treinar o modelo baseline
+modelo_baseline = DummyClassifier(
+    strategy="most_frequent"
+)
+
+modelo_baseline.fit(
+    dados_treino[colunas_cor],
+    y_treino
+)
+
+# Previsões no conjunto de treino
+pred_treino_baseline = modelo_baseline.predict(
+    dados_treino[colunas_cor]
+)
+
+# Avaliação no conjunto de teste
+pred_teste_baseline = modelo_baseline.predict(
+    dados_teste[colunas_cor]
+)
+
+# Métricas
+acuracia_treino = accuracy_score(
+    y_treino,
+    pred_treino_baseline
+)
+
+acuracia_teste = accuracy_score(
+    y_teste,
+    pred_teste_baseline
+)
+
+print("RESULTADOS DO BASELINE")
+print("----------------------")
+print(f"Acurácia no treino: {acuracia_treino:.4f}")
+print(f"Acurácia no teste:  {acuracia_teste:.4f}")
+
+print("\nClasse prevista pelo baseline:")
+print(modelo_baseline.classes_[0])
+
+
+# ==========================================
+# VALIDAÇÃO CRUZADA E PIPELINES
+# ==========================================
+
+# Configuração da validação cruzada
+cv = StratifiedKFold( n_splits=5, shuffle=True, random_state=42)
+
+print("Validação cruzada configurada!")
+print("Número de folds:", cv.get_n_splits())
+print("Estratégia: Stratified K-Fold")
+
+
+# =======================================================
+# CLASSIFICADOR KNN 
+# Treinamento e avaliação nas quatro configurações
+# =======================================================
+
+# Avaliar todas as configurações de características
+resultados_knn = {}
+
+for configuracao, X_atual in X_treino.items():
+
+    print("\n" + "=" * 60)
+    print(f"RESULTADOS KNN - CONFIGURAÇÃO {configuracao}")
+    print("=" * 60)
+
+    # Pipeline: padronização + KNN
+    pipeline_knn = Pipeline([
+        ("scaler", StandardScaler()),
+        ("knn", KNeighborsClassifier(
+            n_neighbors=5,
+            metric="euclidean"
+        ))
+    ])
+
+    # Validação cruzada
+    resultados = cross_validate(
+        pipeline_knn,
+        X_atual,
+        y_treino,
+        cv=cv,
+        scoring={
+            "accuracy": "accuracy",
+            "precision": "precision_macro",
+            "recall": "recall_macro",
+            "f1": "f1_macro"
+        },
+        n_jobs=-1,
+        return_train_score=False
+    )
+
+    resultados_knn[configuracao] = resultados
+
+    # Resultados por fold
+    print("\nRESULTADOS POR FOLD")
+
+    for i in range(5):
+        print(f"\nFold {i+1}:")
+        print(f"Acurácia: {resultados['test_accuracy'][i]:.4f}")
+        print(f"Precisão: {resultados['test_precision'][i]:.4f}")
+        print(f"Recall:   {resultados['test_recall'][i]:.4f}")
+        print(f"F1-score: {resultados['test_f1'][i]:.4f}")
+
+    # Médias
+    print("\nMÉDIAS DA VALIDAÇÃO CRUZADA")
+    print("--------------------------")
+
+    for metrica in ["accuracy", "precision", "recall", "f1"]:
+        valores = resultados[f"test_{metrica}"]
+
+        print(
+            f"{metrica}: "
+            f"{np.mean(valores):.4f} "
+            f"+/- {np.std(valores):.4f}"
+        )
+
+# ======================================================
+# CLASSIFICADOR SVM
+# Treinamento e avaliação nas quatro configurações
+# ======================================================
+
+# Avaliar todas as configurações de características
+resultados_svm = {}
+
+for configuracao, X_atual in X_treino.items():
+
+    print("\n" + "=" * 60)
+    print(f"RESULTADOS SVM - CONFIGURAÇÃO {configuracao}")
+    print("=" * 60)
+
+    # Pipeline: padronização + SVM
+    pipeline_svm = Pipeline([
+        ("scaler", StandardScaler()),
+        ("svm", SVC(
+            kernel="rbf",
+            C=1.0,
+            gamma="scale"
+        ))
+    ])
+
+    # Validação cruzada
+    resultados = cross_validate(
+        pipeline_svm,
+        X_atual,
+        y_treino,
+        cv=cv,
+        scoring={
+            "accuracy": "accuracy",
+            "precision": "precision_macro",
+            "recall": "recall_macro",
+            "f1": "f1_macro"
+        },
+        n_jobs=-1,
+        return_train_score=False
+    )
+
+    resultados_svm[configuracao] = resultados
+
+    # Resultados por fold
+    print("\nRESULTADOS POR FOLD")
+
+    for i in range(5):
+        print(f"\nFold {i+1}:")
+        print(f"Acurácia: {resultados['test_accuracy'][i]:.4f}")
+        print(f"Precisão: {resultados['test_precision'][i]:.4f}")
+        print(f"Recall:   {resultados['test_recall'][i]:.4f}")
+        print(f"F1-score: {resultados['test_f1'][i]:.4f}")
+
+    # Médias
+    print("\nMÉDIAS DA VALIDAÇÃO CRUZADA")
+    print("--------------------------")
+
+    for metrica in ["accuracy", "precision", "recall", "f1"]:
+        valores = resultados[f"test_{metrica}"]
+
+        print(
+            f"{metrica}: "
+            f"{np.mean(valores):.4f} "
+            f"+/- {np.std(valores):.4f}"
+        )
+
+# ======================================================
+# CLASSIFICADOR RANDOM FOREST
+# Treinamento e avaliação nas quatro configurações
+# ======================================================
+
+# Avaliar todas as configurações de características
+resultados_rf = {}
+
+for configuracao, X_atual in X_treino.items():
+
+    print("\n" + "=" * 60)
+    print(f"RESULTADOS RANDOM FOREST - CONFIGURAÇÃO {configuracao}")
+    print("=" * 60)
+
+    # Classificador Random Forest
+    modelo_rf = RandomForestClassifier(
+        n_estimators=100,
+        random_state=42,
+        n_jobs=-1
+    )
+
+    # Validação cruzada
+    resultados = cross_validate(
+        modelo_rf,
+        X_atual,
+        y_treino,
+        cv=cv,
+        scoring={
+            "accuracy": "accuracy",
+            "precision": "precision_macro",
+            "recall": "recall_macro",
+            "f1": "f1_macro"
+        },
+        n_jobs=-1,
+        return_train_score=False
+    )
+
+    resultados_rf[configuracao] = resultados
+
+    # Resultados por fold
+    print("\nRESULTADOS POR FOLD")
+
+    for i in range(5):
+        print(f"\nFold {i+1}:")
+        print(f"Acurácia: {resultados['test_accuracy'][i]:.4f}")
+        print(f"Precisão: {resultados['test_precision'][i]:.4f}")
+        print(f"Recall:   {resultados['test_recall'][i]:.4f}")
+        print(f"F1-score: {resultados['test_f1'][i]:.4f}")
+
+    # Médias
+    print("\nMÉDIAS DA VALIDAÇÃO CRUZADA")
+    print("--------------------------")
+
+    for metrica in ["accuracy", "precision", "recall", "f1"]:
+        valores = resultados[f"test_{metrica}"]
+
+        print(
+            f"{metrica}: "
+            f"{np.mean(valores):.4f} "
+            f"+/- {np.std(valores):.4f}"
+        )
+
+# ===============================================
+# COMPARAÇÃO INICIAL DOS CLASSIFICADORES
+# Comparação entre KNN, SVM e Random Forest
+# ===============================================
+
+configuracoes = [
+    "A - Cor",
+    "B - Cor + Textura",
+    "C - Cor + Textura + Forma",
+    "D - Cor + Textura + Forma + HOG"
+]
+
+resultados = []
+
+for configuracao in configuracoes:
+
+    resultados.append({
+        "Configuração": configuracao,
+
+        # KNN
+        "KNN - Acurácia": np.mean(resultados_knn[configuracao]["test_accuracy"]),
+        "KNN - Precisão": np.mean(resultados_knn[configuracao]["test_precision"]),
+        "KNN - Recall": np.mean(resultados_knn[configuracao]["test_recall"]),
+        "KNN - F1-score": np.mean(resultados_knn[configuracao]["test_f1"]),
+
+        # SVM
+        "SVM - Acurácia": np.mean(resultados_svm[configuracao]["test_accuracy"]),
+        "SVM - Precisão": np.mean(resultados_svm[configuracao]["test_precision"]),
+        "SVM - Recall": np.mean(resultados_svm[configuracao]["test_recall"]),
+        "SVM - F1-score": np.mean(resultados_svm[configuracao]["test_f1"]),
+
+        # Random Forest
+        "RF - Acurácia": np.mean(resultados_rf[configuracao]["test_accuracy"]),
+        "RF - Precisão": np.mean(resultados_rf[configuracao]["test_precision"]),
+        "RF - Recall": np.mean(resultados_rf[configuracao]["test_recall"]),
+        "RF - F1-score": np.mean(resultados_rf[configuracao]["test_f1"])
+    })
+
+df_comparacao = pd.DataFrame(resultados)
+
+print(df_comparacao.round(4))
+
+
+# ==========================================
+# EXIBIÇÃO DAS TABELAS POR MÉTRICA
+# ==========================================
+
+metricas = ["Acurácia", "Precisão", "Recall", "F1-score"]
+
+for metrica in metricas:
+
+    colunas = [
+        "Configuração",
+        f"KNN - {metrica}",
+        f"SVM - {metrica}",
+        f"RF - {metrica}"
+    ]
+
+    print(f"\nCOMPARAÇÃO - {metrica.upper()}")
+    print("-" * 70)
+
+    tabela = df_comparacao[colunas].copy()
+
+    # Converter valores para percentual
+    for coluna in colunas[1:]:
+        tabela[coluna] = tabela[coluna].apply(
+            lambda valor: f"{valor:.2%}"
+        )
+
+    print(tabela)
+
+#==================================================
+# Otimização dos hiperparâmetros — GridSearchCV
+# Redução das Amostras em 30% para Treinamento
+#==================================================
+# Índices da amostra de treinamento
+indices_treino, indices_descartados = train_test_split(
+    np.arange(len(y_treino)),
+    train_size=0.30,
+    stratify=y_treino,
+    random_state=42
+)
+
+# Criar amostras reduzidas de todas as configurações
+X_treino_amostra = {
+    nome: dados.iloc[indices_treino].copy()
+    for nome, dados in X_treino.items()
+}
+
+y_treino_amostra = y_treino.iloc[indices_treino].copy()
+
+# Conferir dimensões
+print("Amostras de treinamento:", len(y_treino_amostra))
+print("Número de classes:", y_treino_amostra.nunique())
+
+for nome, dados in X_treino_amostra.items():
+    print(nome, dados.shape)
+
+#=================================
+# Otimização do KNN
+#=================================
+#   Construção do Pipeline
+pipeline_knn = Pipeline([
+    ("scaler", StandardScaler()),
+    ("knn", KNeighborsClassifier())
+])
+
+#   Definir a grade de hiperparâmetros
+param_grid_knn = {
+    "knn__n_neighbors": [3, 5, 7, 9, 11],
+    "knn__weights": ["uniform", "distance"],
+    "knn__metric": ["euclidean", "manhattan"]
+}
+
+#   Configurar o GridSearchCV
+grid_knn = GridSearchCV(
+    estimator=pipeline_knn,
+    param_grid=param_grid_knn,
+    scoring="f1_macro",
+    cv=cv,
+    n_jobs=-1,
+    verbose=1,
+    refit=True
+)
+
+#   Executar a otimização do KNN
+grid_knn.fit(
+    X_treino_amostra["B - Cor + Textura"],
+    y_treino_amostra
+)
+
+
+#   Exibir os resultados
+print("Melhores parâmetros:")
+print(grid_knn.best_params_)
+
+print("\nMelhor F1-score macro:")
+print(f"{grid_knn.best_score_:.6f}")
+
+#=================================
+# Otimização do SVM
+#=================================
+#Montar Pipeline do SVM
+pipeline_svm = Pipeline([
+    ("scaler", StandardScaler()),
+    ("svm", SVC(kernel="rbf"))
+])
+
+#   Definir os hiperparâmetros
+param_grid_svm = {
+    "svm__C": [1, 10, 100],
+    "svm__gamma": ["scale", 0.01]
+}
+
+#   Configurar o GridSearchCV
+grid_svm = GridSearchCV(
+    estimator=pipeline_svm,
+    param_grid=param_grid_svm,
+    scoring="f1_macro",
+    cv=cv,
+    n_jobs=-1,
+    verbose=1,
+    refit=True
+)
+
+#   Executar a otimização
+grid_svm.fit(
+    X_treino_amostra["D - Cor + Textura + Forma + HOG"],
+    y_treino_amostra
+)
+
+#   Exibir os resultados
+print("Melhores parâmetros:")
+print(grid_svm.best_params_)
+
+print("\nMelhor F1-score macro:")
+print(f"{grid_svm.best_score_:.6f}")
+
+#======================================
+# Otimização do Random Forest
+#======================================
+# Modelo base
+modelo_rf = RandomForestClassifier(
+    random_state=42,
+    n_jobs=-1
+)
+
+# Grade reduzida de hiperparâmetros
+param_grid_rf = {
+    "n_estimators": [100, 200],
+    "max_features": ["sqrt", 0.5],
+    "min_samples_leaf": [1, 2]
+}
+
+#=======================================
+# Otimizar a configuração C
+#=======================================
+
+inicio = time.time()
+
+grid_rf_c = GridSearchCV(
+    estimator=modelo_rf,
+    param_grid=param_grid_rf,
+    scoring="f1_macro",
+    cv=cv,
+    n_jobs=-1,
+    verbose=1,
+    refit=True
+)
+
+grid_rf_c.fit(
+    X_treino_amostra["C - Cor + Textura + Forma"],
+    y_treino_amostra
+)
+
+tempo_rf_c = time.time() - inicio
+
+print("CONFIGURAÇÃO C - COR + TEXTURA + FORMA")
+print("Melhores parâmetros:")
+print(grid_rf_c.best_params_)
+
+print("\nMelhor F1-score macro:")
+print(f"{grid_rf_c.best_score_:.6f}")
+
+print(f"\nTempo de execução: {tempo_rf_c:.2f} segundos")
+
+#=================================
+# Organizar os resultados
+#=================================
+
+resultados_modelos = pd.DataFrame([
+    {
+        "Classificador": "KNN",
+        "Configuração": "B - Cor + Textura",
+        "F1-score macro": grid_knn.best_score_,
+        "Melhores parâmetros": grid_knn.best_params_
+    },
+    {
+        "Classificador": "SVM",
+        "Configuração": "D - Cor + Textura + Forma + HOG",
+        "F1-score macro": grid_svm.best_score_,
+        "Melhores parâmetros": grid_svm.best_params_
+    },
+    {
+        "Classificador": "Random Forest",
+        "Configuração": "C - Cor + Textura + Forma",
+        "F1-score macro": grid_rf_c.best_score_,
+        "Melhores parâmetros": grid_rf_c.best_params_
+    }
+])
+
+resultados_modelos = resultados_modelos.sort_values(
+    by="F1-score macro",
+    ascending=False
+).reset_index(drop=True)
+
+resultados_modelos["F1-score macro (%)"] = (
+    resultados_modelos["F1-score macro"] * 100
+)
+
+print(resultados_modelos)
+
+#========================================================
+# Organizar dos resultados comparação em gráfico
+#========================================================
+# Dados da comparação
+nomes = [
+    "Random Forest\n(C - Cor + Textura + Forma)",
+    "KNN\n(B - Cor + Textura)",
+    "SVM\n(D - Cor + Textura + Forma + HOG)"]
+
+valores = [
+    grid_rf_c.best_score_ * 100,
+    grid_knn.best_score_ * 100,
+    grid_svm.best_score_ * 100]
+
+# Criar figura
+fig, ax = plt.subplots(figsize=(12, 6))
+
+# Barras horizontais
+barras = ax.barh(nomes, valores, height=0.55)
+
+# Inverter para deixar o maior resultado no topo
+ax.invert_yaxis()
+
+# Escala do eixo X
+ax.set_xlim(90, 100)
+
+# Títulos e rótulos
+ax.set_title(
+    "Comparação dos Classificadores Otimizados", fontsize=16, fontweight="bold", pad=20)
+
+ax.set_xlabel( "F1-score macro (%)", fontsize=12)
+ax.set_ylabel("Classificadores e configurações", fontsize=12)
+
+# Adicionar percentual em cada barra
+for barra, valor in zip(barras, valores):
+    ax.text(
+        valor + 0.08,
+        barra.get_y() + barra.get_height() / 2,
+        f"{valor:.2f}%",
+        va="center",
+        fontsize=12,
+        fontweight="bold")
+
+# Grade discreta
+ax.grid(
+    axis="x",
+    linestyle="--",
+    alpha=0.35)
+
+ax.set_axisbelow(True)
+
+# Ajustes visuais
+ax.tick_params(axis="both", labelsize=10)
+plt.tight_layout()
+
+#**********************************************
+#   Salva o gráfico em uma resolução melhor
+#********************************************** 
+#plt.savefig(
+#    "comparacao_classificadores.png",
+#    dpi=300,
+#    bbox_inches="tight")
+
+plt.show()
+
+#=============================================
+# Treinamento dos modelos finais  
+#==============================================
+# Recuperar os melhores hiperparâmetros
+print("KNN:", grid_knn.best_params_)
+print("SVM:", grid_svm.best_params_)
+print("Random Forest:", grid_rf_c.best_params_)
+
+#====================================
+#  Construir os modelos finais
+#====================================
+# KNN
+modelo_knn_final = Pipeline([
+    ("scaler", StandardScaler()),
+    ("knn", KNeighborsClassifier(
+        **{
+            chave.replace("knn__", ""): valor
+            for chave, valor in grid_knn.best_params_.items()
+        }
+    ))
+])
+
+# SVM
+modelo_svm_final = Pipeline([
+    ("scaler", StandardScaler()),
+    ("svm", SVC(
+        kernel="rbf",
+        **{
+            chave.replace("svm__", ""): valor
+            for chave, valor in grid_svm.best_params_.items()
+        }
+    ))
+])
+
+# Random Forest
+modelo_rf_final = RandomForestClassifier(
+    random_state=42,
+    n_jobs=-1,
+    **grid_rf_c.best_params_
+)
+
+#================================================
+# Treinando KNN - Configuração B
+#================================================
+inicio = time.time()
+
+modelo_knn_final.fit(
+    X_treino["B - Cor + Textura"],
+    y_treino
+)
+print(f"Tempo KNN: {(time.time() - inicio)/60:.2f} minutos")
+
+#================================================
+# Treinando SVM - Configuração D
+#================================================
+inicio = time.time()
+
+modelo_svm_final.fit(
+    X_treino["D - Cor + Textura + Forma + HOG"],
+    y_treino
+)
+print(f"Tempo SVM: {(time.time() - inicio)/60:.2f} minutos")
+
+#================================================
+#  Treinando Random Forest - Configuração C
+#================================================
+inicio = time.time() 
+
+modelo_rf_final.fit(
+    X_treino["C - Cor + Textura + Forma"],
+    y_treino
+)
+print(f"Tempo Random Forest: {(time.time() - inicio)/60:.2f} minutos")
+
+#===========================================
+#  Avaliação final dos classificadores
+#  Avaliação das métricas gerais
+#===========================================
+
+# Fazer previsões
+y_pred_knn = modelo_knn_final.predict(
+    X_teste["B - Cor + Textura"]
+)
+
+y_pred_svm = modelo_svm_final.predict(
+    X_teste["D - Cor + Textura + Forma + HOG"]
+)
+
+y_pred_rf = modelo_rf_final.predict(
+    X_teste["C - Cor + Textura + Forma"]
+)
+
+# Organizar previsões
+previsoes = {
+    "KNN": y_pred_knn,
+    "SVM": y_pred_svm,
+    "Random Forest": y_pred_rf
+}
+
+# Calcular métricas
+resultados_teste = []
+
+for nome, y_pred in previsoes.items():
+
+    resultados_teste.append({
+        "Classificador": nome,
+        "Acurácia": accuracy_score(y_teste, y_pred),
+        "Precisão macro": precision_score(
+            y_teste, y_pred, average="macro", zero_division=0
+        ),
+        "Recall macro": recall_score(
+            y_teste, y_pred, average="macro", zero_division=0
+        ),
+        "F1-score macro": f1_score(
+            y_teste, y_pred, average="macro", zero_division=0
+        )
+    })
+
+df_resultados_teste = pd.DataFrame(resultados_teste)
+
+print(
+    df_resultados_teste.round(4)
+)
+
+
+# ============================================================
+# MÉTRICAS DE DESEMPENHO POR CLASSE
+# ============================================================
+
+# Organizar as previsões dos classificadores
+previsoes = {
+    "KNN": y_pred_knn,
+    "SVM": y_pred_svm,
+    "Random Forest": y_pred_rf
+}
+
+# Identificar as classes presentes no conjunto de teste
+classes = sorted(y_teste.unique())
+
+# Armazenar os relatórios individuais
+relatorios_por_classe = {}
+
+for nome, y_pred in previsoes.items():
+
+    # Gerar relatório de classificação
+    relatorio = classification_report(
+        y_teste,
+        y_pred,
+        labels=classes,
+        output_dict=True,
+        zero_division=0
+    )
+
+    # Transformar o relatório em DataFrame
+    df_relatorio = pd.DataFrame(relatorio).T
+
+    # Manter somente as métricas das classes
+    df_relatorio = df_relatorio.loc[
+        [str(classe) for classe in classes],
+        ["precision", "recall", "f1-score", "support"]
+    ]
+
+    # Renomear as colunas
+    df_relatorio.columns = [
+        "Precisão",
+        "Recall",
+        "F1-score",
+        "Suporte"
+    ]
+
+    # Armazenar resultado
+    relatorios_por_classe[nome] = df_relatorio
+
+    print(f"\n{'='*60}")
+    print(f"MÉTRICAS POR CLASSE - {nome}")
+    print(f"{'='*60}")
+
+    print(df_relatorio.round(4))
+
+
+# Salvar os relatórios individuais
+for nome, df_relatorio in relatorios_por_classe.items():
+
+    arquivo = (
+        "metricas_por_classe_"
+        + nome.lower().replace(" ", "_")
+        + ".csv"
+    )
+
+    df_relatorio.to_csv(
+        arquivo,
+        encoding="utf-8-sig"
+    )
+
+    print(f"Arquivo salvo: {arquivo}")
+
+
+# =====================================================
+# MATRIZES DE CONFUSÃO REDUZIDAS — TOP 5 CLASSES COM ERROS
+# =====================================================
+
+def matriz_confusao_top5(y_real, y_pred, nome_modelo):
+
+    # Converter para arrays
+    y_real = np.asarray(y_real)
+    y_pred = np.asarray(y_pred)
+
+    # Obter todas as classes
+    classes = sorted(np.unique(y_real))
+
+    # Construir a matriz de confusão completa
+    matriz = confusion_matrix(
+        y_real,
+        y_pred,
+        labels=classes
+    )
+
+    # Calcular a quantidade de erros por classe
+    erros = matriz.sum(axis=1) - matriz.diagonal()
+
+    # Identificar as cinco classes com mais erros
+    indices_top5 = np.argsort(erros)[::-1][:5]
+
+    classes_top5 = [classes[i] for i in indices_top5]
+
+    # Criar matriz reduzida
+    matriz_reduzida = []
+
+    for i in indices_top5:
+
+        linha = []
+
+        # Contagem das previsões para as cinco classes selecionadas
+        for j in indices_top5:
+            linha.append(matriz[i, j])
+
+        # Agrupar previsões destinadas às demais classes
+        outras = matriz[i].sum() - sum(linha)
+
+        linha.append(outras)
+
+        matriz_reduzida.append(linha)
+
+    # Organizar em DataFrame
+    colunas = classes_top5 + ["Outras classes"]
+
+    df_matriz = pd.DataFrame(
+        matriz_reduzida,
+        index=classes_top5,
+        columns=colunas
+    )
+
+    # Exibir matriz de confusão
+    plt.figure(figsize=(11, 6))
+
+    sns.heatmap(
+        df_matriz,
+        annot=True,
+        fmt="d",
+        cmap="Blues"
+    )
+
+    plt.title(
+        f"Matriz de confusão reduzida — {nome_modelo}"
+    )
+
+    plt.xlabel("Classe predita")
+    plt.ylabel("Classe real")
+
+    plt.tight_layout()
+    plt.show()
+
+    return df_matriz
+
+
+# =====================================================
+# EXECUÇÃO DAS MATRIZES DE CONFUSÃO REDUZIDAS
+# =====================================================
+
+matrizes_reduzidas = {}
+
+for nome, y_pred in previsoes.items():
+
+    print(f"\nMatriz de confusão — {nome}")
+
+    df_matriz = matriz_confusao_top5(
+        y_real=y_teste,
+        y_pred=y_pred,
+        nome_modelo=nome
+    )
+
+    matrizes_reduzidas[nome] = df_matriz
+
+    print(df_matriz)
+
+#===========================================
+#   Organizar os modelos
+#==========================================
+
+modelos_finais = {
+    "KNN": {
+        "modelo": modelo_knn_final,
+        "X": X_teste["B - Cor + Textura"]
+    },
+    "SVM": {
+        "modelo": modelo_svm_final,
+        "X": X_teste["D - Cor + Textura + Forma + HOG"]
+    },
+    "Random Forest": {
+        "modelo": modelo_rf_final,
+        "X": X_teste["C - Cor + Textura + Forma"]
+    }
+}
+
+#===================================================
+#   Identificação dos principais erros
+#===================================================
+
+def analisar_confusoes(modelo, X, y_real, nome_modelo):
+
+    # Realizar previsões
+    y_pred = modelo.predict(X)
+
+    # Obter as classes
+    classes = sorted(y_real.unique())
+
+    # Calcular matriz de confusão
+    matriz = confusion_matrix(
+        y_real,
+        y_pred,
+        labels=classes
+    )
+
+    # Remover a diagonal principal (acertos)
+    matriz_erros = matriz.copy()
+    np.fill_diagonal(matriz_erros, 0)
+
+    # Identificar os pares de classes confundidas
+    pares = []
+
+    for i in range(len(classes)):
+        for j in range(len(classes)):
+
+            if matriz_erros[i, j] > 0:
+                pares.append({
+                    "Modelo": nome_modelo,
+                    "Classe real": classes[i],
+                    "Classe predita": classes[j],
+                    "Quantidade": matriz_erros[i, j]
+                })
+
+    # Organizar do maior para o menor número de erros
+    df_pares = pd.DataFrame(pares)
+
+    return df_pares.sort_values(
+        "Quantidade",
+        ascending=False
+    )
+
+#=============================================
+#   Execução da comparação
+#============================================
+
+resultados_confusoes = []
+
+for nome, dados in modelos_finais.items():
+
+    df_confusoes = analisar_confusoes(
+        modelo=dados["modelo"],
+        X=dados["X"],
+        y_real=y_teste,
+        nome_modelo=nome
+    )
+
+    resultados_confusoes.append(df_confusoes)
+
+    print(f"\nPrincipais confusões — {nome}")
+    print(df_confusoes.head(10))
